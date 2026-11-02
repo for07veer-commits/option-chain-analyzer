@@ -77,7 +77,6 @@ def get_fallback_live_data(symbol):
         },
     })
 
-  # Mock available expiry dates for dropdown selection
   expiry_dates = ["06-Nov-2026", "13-Nov-2026", "20-Nov-2026", "27-Nov-2026"]
 
   return {
@@ -97,7 +96,7 @@ def process_data(json_data):
   records = json_data["records"]["data"]
   spot_price = json_data["records"]["underlyingValue"]
   expiry_list = json_data["records"].get(
-      "expiryDates", ["Current Expiry", "Next Expiry"]
+      "expiryDates", ["06-Nov-2026", "13-Nov-2026"]
   )
 
   total_call_oi = 0
@@ -194,13 +193,11 @@ if st.button("🔄 Fetch Live Option Chain & Targets"):
     if raw_json:
       df, spot_price, current_pcr, expiry_dates = process_data(raw_json)
 
-      # --- NEW: Expiry Date Selection Dropdown ---
       selected_expiry = st.selectbox("📅 Select Expiry Date:", expiry_dates)
 
       tomorrow_mood = predict_market_mood(current_pcr)
       up_targets, down_targets = calculate_targets(spot_price, selected_index)
 
-      # Filter strikes near spot price
       df_filtered = df[
           (df["Strike Price"] >= spot_price - 400)
           & (df["Strike Price"] <= spot_price + 400)
@@ -212,7 +209,6 @@ if st.button("🔄 Fetch Live Option Chain & Targets"):
           f" {selected_expiry} | Spot Price: {spot_price}"
       )
 
-      # Top Metrics Display
       col1, col2, col3 = st.columns(3)
       col1.metric("Selected Index", selected_index)
       col2.metric("Selected Expiry", selected_expiry)
@@ -220,7 +216,6 @@ if st.button("🔄 Fetch Live Option Chain & Targets"):
 
       st.info(f"**Kal Ke Liye Market Ka Mood:** {tomorrow_mood}")
 
-      # Targets Display Section
       st.write("### 🎯 Up & Down Targets")
       t_col1, t_col2 = st.columns(2)
 
@@ -241,7 +236,6 @@ if st.button("🔄 Fetch Live Option Chain & Targets"):
         )
 
 
-      # Highlighting function for Buy signals
       def highlight_buy_signals(row):
         if "BUY CALL" in row["Action_Signal"]:
           return [
