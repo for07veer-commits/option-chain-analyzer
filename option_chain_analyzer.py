@@ -77,16 +77,28 @@ def get_fallback_live_data(symbol):
         },
     })
 
-  return {"records": {"underlyingValue": base_price, "data": mock_records}}
+  # Mock available expiry dates for dropdown selection
+  expiry_dates = ["06-Nov-2026", "13-Nov-2026", "20-Nov-2026", "27-Nov-2026"]
+
+  return {
+      "records": {
+          "underlyingValue": base_price,
+          "data": mock_records,
+          "expiryDates": expiry_dates,
+      }
+  }
 
 
-# 3. Process Data & Calculate PCR
+# 3. Process Data & Calculate PCR & Extract Expiry Dates
 def process_data(json_data):
   if not json_data or "records" not in json_data:
-    return None, 0, 0
+    return None, 0, 0, []
 
   records = json_data["records"]["data"]
   spot_price = json_data["records"]["underlyingValue"]
+  expiry_list = json_data["records"].get(
+      "expiryDates", ["Current Expiry", "Next Expiry"]
+  )
 
   total_call_oi = 0
   total_put_oi = 0
@@ -115,7 +127,7 @@ def process_data(json_data):
 
   pcr_value = round(total_put_oi / total_call_oi, 2) if total_call_oi > 0 else 1.0
   df = pd.DataFrame(processed_data)
-  return df, spot_price, pcr_value
+  return df, spot_price, pcr_value, expiry_list
 
 
 # 4. Predict Market Mood
@@ -130,7 +142,6 @@ def predict_market_mood(pcr_value):
 
 # 5. Calculate Upside & Downside Targets (1, 2, 3)
 def calculate_targets(spot_price, symbol):
-  # Index ke hisaab se standard step/range distance set ki gayi hai
   step = (
       100
       if symbol == "NIFTY"
@@ -142,14 +153,14 @@ def calculate_targets(spot_price, symbol):
   )
 
   upside_targets = {
-      "Target 1": spot_price + step,
-      "Target 2": spot_price + (step * 2),
-      "Target 3": spot_price + (step * 3),
+      "Target_1": spot_price + step,
+      "Target_2": spot_price + (step * 2),
+      "Target_3": spot_price + (step * 3),
   }
   downside_targets = {
-      "Target 1": spot_price - step,
-      "Target 2": spot_price - (step * 2),
-      "Target 3": spot_price - (step * 3),
+      "Target_1": spot_price - step,
+      "Target_2": spot_price - (step * 2),
+      "Target_3": spot_price - (step * 3),
   }
   return upside_targets, downside_targets
 
@@ -181,7 +192,11 @@ if st.button("🔄 Fetch Live Option Chain & Targets"):
   with st.spinner("Analyzing market structure & targets..."):
     raw_json = fetch_live_option_data(selected_index)
     if raw_json:
-      df, spot_price, current_pcr = process_data(raw_json)
+      df, spot_price, current_pcr, expiry_dates = process_data(raw_json)
+
+      # --- NEW: Expiry Date Selection Dropdown ---
+      selected_expiry = st.selectbox("📅 Select Expiry Date:", expiry_dates)
+
       tomorrow_mood = predict_market_mood(current_pcr)
       up_targets, down_targets = calculate_targets(spot_price, selected_index)
 
@@ -193,14 +208,14 @@ if st.button("🔄 Fetch Live Option Chain & Targets"):
       analyzed_df = detect_smart_money_rejection(df_filtered, days_to_expiry)
 
       st.success(
-          f"Analysis Complete! Index: {selected_index} | Spot Price:"
-          f" {spot_price}"
+          f"Analysis Complete! Index: {selected_index} | Expiry:"
+          f" {selected_expiry} | Spot Price: {spot_price}"
       )
 
       # Top Metrics Display
       col1, col2, col3 = st.columns(3)
       col1.metric("Selected Index", selected_index)
-      col2.metric("Days to Expiry", f"{days_to_expiry} Days")
+      col2.metric("Selected Expiry", selected_expiry)
       col3.metric("Live PCR", f"{current_pcr}")
 
       st.info(f"**Kal Ke Liye Market Ka Mood:** {tomorrow_mood}")
@@ -212,18 +227,19 @@ if st.button("🔄 Fetch Live Option Chain & Targets"):
       with t_col1:
         st.markdown("#### 🟢 Upside Targets (Resistance Levels)")
         st.success(
-            f"**Target 1:** {up_targets['Target_1'] if 'Target_1' in up_targets else list(up_targets.values())[0]}\n\n"
-            f"**Target 2:** {up_targets['Target_2'] if 'Target_2' in up_targets else list(up_targets.values())[1]}\n\n"
-            f"**Target 3:** {up_targets['Target_3'] if 'Target_3' in up_targets else list(up_targets.values())[2]}"
+            f"**Target 1:** {up_targets['Target_1']}\n\n"
+            f"**Target 2:** {up_targets['Target_2']}\n\n"
+            f"**Target 3:** {up_targets['Target_3']}"
         )
 
       with t_col2:
         st.markdown("#### 🔴 Downside Targets (Support Levels)")
         st.error(
-            f"**Target 1:** {down_targets['Target_1'] if 'Target_1' in down_targets else list(down_targets.values())[0]}\n\n"
-            f"**Target 2:** {down_targets['Target_2'] if 'Target_2' in down_targets else list(down_targets.values())[1]}\n\n"
-            f"**Target 3:** {down_targets['Target_3'] if 'Target_3' in down_targets else list(down_targets.values())[2]}"
+            f"**Target 1:** {down_targets['Target_1']}\n\n"
+            f"**Target 2:** {down_targets['Target_2']}\n\n"
+            f"**Target 3:** {down_targets['Target_3']}"
         )
+
 
       # Highlighting function for Buy signals
       def highlight_buy_signals(row):
@@ -239,6 +255,7 @@ if st.button("🔄 Fetch Live Option Chain & Targets"):
           ] * len(row)
         else:
           return [""] * len(row)
+
 
       st.write("### 📊 Strike Price Analyzer with Smart Rejection Signals")
       st.dataframe(
